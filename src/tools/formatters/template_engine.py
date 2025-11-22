@@ -2,7 +2,7 @@
 
 from langchain.tools import BaseTool
 from pydantic import BaseModel, Field
-from typing import Any, Dict
+from typing import Any, Dict, ClassVar
 
 
 class TemplateEngineInput(BaseModel):
@@ -14,9 +14,9 @@ class TemplateEngineInput(BaseModel):
 class TemplateEngineTool(BaseTool):
     """Tool for rendering templates."""
 
-    name = "template_engine"
-    description = "Renders templates with data"
-    args_schema = TemplateEngineInput
+    name: ClassVar[str] = "template_engine"
+    description: ClassVar[str] = "Renders templates with data"
+    args_schema: ClassVar[type[BaseModel]] = TemplateEngineInput
 
     def _run(self, template: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """Render template."""

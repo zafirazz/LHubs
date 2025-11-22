@@ -5,7 +5,7 @@ CSV Parser Tool - Parses CSV files with robust error handling.
 import csv
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, ClassVar
 
 import pandas as pd
 
@@ -27,13 +27,13 @@ class CSVParserInput(BaseModel):
 class CSVParserTool(BaseTool):
     """Tool for parsing CSV files."""
 
-    name = "csv_parser"
-    description = """
+    name: ClassVar[str] = "csv_parser"
+    description: ClassVar[str] = """
     Parses CSV files and returns structured data.
     Handles various CSV formats, encodings, and delimiters.
     Returns data as a list of dictionaries.
     """
-    args_schema = CSVParserInput
+    args_schema: ClassVar[type[BaseModel]] = CSVParserInput
 
     def _run(self, file_path: str, delimiter: str = ",", encoding: str = "utf-8", skip_rows: int = 0) -> Dict[str, Any]:
         """Parse CSV file."""

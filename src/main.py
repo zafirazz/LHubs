@@ -5,6 +5,8 @@ Main entry point for AML Casefile Generation System.
 import asyncio
 import logging
 import sys
+import os
+import re
 from pathlib import Path
 from typing import Dict, Any
 
@@ -45,11 +47,33 @@ workflow_engine: WorkflowEngine = None
 llm_service: LLMService = None
 
 
+def expand_env_vars(value: Any) -> Any:
+    """Expand environment variable syntax in config values."""
+    if isinstance(value, str):
+        # Match ${VAR:default} syntax
+        match = re.match(r'\$\{([^:]+):([^}]+)\}', value)
+        if match:
+            var_name, default_value = match.groups()
+            return os.getenv(var_name, default_value)
+        # Match ${VAR} syntax (no default)
+        match = re.match(r'\$\{([^}]+)\}', value)
+        if match:
+            var_name = match.group(1)
+            return os.getenv(var_name, "")
+    elif isinstance(value, dict):
+        return {k: expand_env_vars(v) for k, v in value.items()}
+    elif isinstance(value, list):
+        return [expand_env_vars(item) for item in value]
+    return value
+
+
 def load_config() -> Dict[str, Any]:
     """Load application configuration."""
     config_path = Path(__file__).parent.parent / "configs" / "app.yaml"
     with open(config_path, "r") as f:
-        return yaml.safe_load(f)
+        config = yaml.safe_load(f)
+    # Expand environment variables
+    return expand_env_vars(config)
 
 
 def initialize_system():
@@ -87,25 +111,25 @@ def initialize_system():
     # Initialize and register agents
     agents_config = config.get("agents", {})
 
-    parser_agent = DataParserAgent()
+    parser_agent = DataParserAgent(llm_service=llm_service)
     workflow_engine.register_agent("data_parser", parser_agent)
 
-    validator_agent = DataValidatorAgent()
+    validator_agent = DataValidatorAgent(llm_service=llm_service)
     workflow_engine.register_agent("data_validator", validator_agent)
 
-    risk_agent = RiskAssessmentAgent()
+    risk_agent = RiskAssessmentAgent(llm_service=llm_service)
     workflow_engine.register_agent("risk_assessment", risk_agent)
 
-    inconsistency_agent = InconsistencyDetectionAgent()
+    inconsistency_agent = InconsistencyDetectionAgent(llm_service=llm_service)
     workflow_engine.register_agent("inconsistency_detection", inconsistency_agent)
 
-    redflag_agent = RedFlagDetectionAgent()
+    redflag_agent = RedFlagDetectionAgent(llm_service=llm_service)
     workflow_engine.register_agent("redflag_detection", redflag_agent)
 
-    casefile_agent = CasefileBuilderAgent()
+    casefile_agent = CasefileBuilderAgent(llm_service=llm_service)
     workflow_engine.register_agent("casefile_builder", casefile_agent)
 
-    sar_agent = SARRecommendationAgent()
+    sar_agent = SARRecommendationAgent(llm_service=llm_service)
     workflow_engine.register_agent("sar_recommendation", sar_agent)
 
     logger.info("System initialization complete")
@@ -184,10 +208,19 @@ if __name__ == "__main__":
     config = load_config()
     api_config = config.get("api", {})
 
+    # Ensure port is an integer
+    port = api_config.get("port", 8000)
+    if isinstance(port, str):
+        try:
+            port = int(port)
+        except ValueError:
+            logger.warning(f"Invalid port value '{port}', using default 8000")
+            port = 8000
+
     uvicorn.run(
         "src.main:app",
         host=api_config.get("host", "0.0.0.0"),
-        port=api_config.get("port", 8000),
+        port=port,
         reload=config.get("app", {}).get("debug", False),
     )
 

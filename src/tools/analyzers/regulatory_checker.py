@@ -2,7 +2,7 @@
 
 from langchain.tools import BaseTool
 from pydantic import BaseModel, Field
-from typing import Any, Dict
+from typing import Any, Dict, ClassVar
 
 
 class RegulatoryCheckerInput(BaseModel):
@@ -13,9 +13,9 @@ class RegulatoryCheckerInput(BaseModel):
 class RegulatoryCheckerTool(BaseTool):
     """Tool for checking regulatory compliance."""
 
-    name = "regulatory_checker"
-    description = "Checks case data against regulatory requirements"
-    args_schema = RegulatoryCheckerInput
+    name: ClassVar[str] = "regulatory_checker"
+    description: ClassVar[str] = "Checks case data against regulatory requirements"
+    args_schema: ClassVar[type[BaseModel]] = RegulatoryCheckerInput
 
     def _run(self, case_data: Dict[str, Any]) -> Dict[str, Any]:
         """Check regulations."""

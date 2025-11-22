@@ -24,7 +24,7 @@ class DataValidatorAgent(BaseAgent):
     - Missing data indicators
     """
 
-    def __init__(self, agent_id: str = "data_validator", **kwargs):
+    def __init__(self, agent_id: str = "data_validator", llm_service=None, **kwargs):
         tools = [
             CrossReferenceCheckerTool(),
             LogicValidatorTool(),
@@ -35,6 +35,7 @@ class DataValidatorAgent(BaseAgent):
             name="Data Validator Agent",
             description="Validates data completeness and quality",
             tools=tools,
+            llm_service=llm_service,
             **kwargs
         )
 

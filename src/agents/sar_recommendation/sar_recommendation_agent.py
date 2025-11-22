@@ -24,7 +24,7 @@ class SARRecommendationAgent(BaseAgent):
     - Confidence levels
     """
 
-    def __init__(self, agent_id: str = "sar_recommendation", **kwargs):
+    def __init__(self, agent_id: str = "sar_recommendation", llm_service=None, **kwargs):
         tools = [
             DecisionEngineTool(),
             RegulatoryCheckerTool(),
@@ -35,6 +35,7 @@ class SARRecommendationAgent(BaseAgent):
             name="SAR Recommendation Agent",
             description="Generates final SAR filing recommendation based on all findings",
             tools=tools,
+            llm_service=llm_service,
             **kwargs
         )
 
@@ -194,6 +195,41 @@ class SARRecommendationAgent(BaseAgent):
         inconsistency_count: int, regulatory_check: Dict
     ) -> str:
         """Generate detailed rationale for recommendation."""
+        # Use LLM for intelligent rationale if available
+        if self.llm_service:
+            try:
+                criteria_met = regulatory_check.get("criteria_met", [])
+                criteria_not_met = regulatory_check.get("criteria_not_met", [])
+                
+                prompt = f"""You are an AML compliance expert providing a SAR (Suspicious Activity Report) filing recommendation.
+
+Case Details:
+- Risk Score: {risk_score}/100
+- Red Flags Detected: {red_flag_count}
+- Data Inconsistencies: {inconsistency_count}
+
+Regulatory Criteria Met: {len(criteria_met)}
+Regulatory Criteria Not Met: {len(criteria_not_met)}
+
+Recommendation: {recommendation.upper()}
+
+Create a professional, detailed rationale (2-3 paragraphs) explaining:
+1. Why this recommendation was made
+2. Key evidence supporting the decision
+3. Regulatory justification
+4. Next steps or considerations
+
+Use professional AML compliance language. Be specific and cite the risk factors.
+
+Rationale:"""
+
+                llm_rationale = self.llm_service.generate(prompt, max_new_tokens=500, temperature=0.2)
+                if llm_rationale and len(llm_rationale.strip()) > 100:
+                    return f"SAR Filing Recommendation: {recommendation.upper()}\n\n{llm_rationale.strip()}"
+            except Exception as e:
+                logger.warning(f"LLM rationale generation failed: {e}. Falling back to template.")
+
+        # Fallback to template-based rationale
         rationale = f"SAR Filing Recommendation: {recommendation.upper()}\n\n"
         
         rationale += f"Risk Score: {risk_score}/100\n"

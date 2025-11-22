@@ -30,7 +30,7 @@ class DataParserAgent(BaseAgent):
     - Excel files
     """
 
-    def __init__(self, agent_id: str = "data_parser", **kwargs):
+    def __init__(self, agent_id: str = "data_parser", llm_service=None, **kwargs):
         tools = [
             CSVParserTool(),
             TextExtractorTool(),
@@ -42,6 +42,7 @@ class DataParserAgent(BaseAgent):
             name="Data Parser Agent",
             description="Extracts and normalizes data from uploaded files",
             tools=tools,
+            llm_service=llm_service,
             **kwargs
         )
 

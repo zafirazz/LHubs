@@ -2,7 +2,9 @@
 Inconsistency Detection Agent - Identifies discrepancies and contradictions.
 """
 
+import json
 import logging
+import re
 from typing import Any, Dict, List
 
 from ..base_agent import BaseAgent
@@ -24,7 +26,7 @@ class InconsistencyDetectionAgent(BaseAgent):
     - Data conflicts
     """
 
-    def __init__(self, agent_id: str = "inconsistency_detection", **kwargs):
+    def __init__(self, agent_id: str = "inconsistency_detection", llm_service=None, **kwargs):
         tools = [
             CrossReferenceCheckerTool(),
             LogicValidatorTool(),
@@ -35,6 +37,7 @@ class InconsistencyDetectionAgent(BaseAgent):
             name="Inconsistency Detection Agent",
             description="Identifies discrepancies and contradictions in client data",
             tools=tools,
+            llm_service=llm_service,
             **kwargs
         )
 
@@ -72,6 +75,14 @@ class InconsistencyDetectionAgent(BaseAgent):
         logger.info(f"Detecting inconsistencies across {len(transactions)} transactions and {len(csv_data)} CSV records")
 
         inconsistencies = []
+
+        # Use LLM for intelligent inconsistency detection if available
+        if self.llm_service:
+            try:
+                llm_inconsistencies = self._detect_inconsistencies_with_llm(transactions, csv_data, notes)
+                inconsistencies.extend(llm_inconsistencies)
+            except Exception as e:
+                logger.warning(f"LLM inconsistency detection failed: {e}. Falling back to rule-based detection.")
 
         # Cross-reference checks
         inconsistencies.extend(self._check_cross_references(transactions, csv_data, notes))
@@ -270,4 +281,73 @@ class InconsistencyDetectionAgent(BaseAgent):
             return f"High-severity inconsistencies detected ({high_count}). Data quality concerns identified."
         else:
             return "Minor inconsistencies detected. Data quality is generally acceptable."
+
+    def _detect_inconsistencies_with_llm(
+        self, transactions: List[Dict], csv_data: List[Dict], notes: List[str]
+    ) -> List[Dict[str, Any]]:
+        """Use LLM to detect inconsistencies intelligently."""
+        # Prepare data summary
+        tx_summary = []
+        for tx in transactions[:15]:  # Limit for context
+            tx_summary.append({
+                "id": tx.get("transaction_id", "unknown"),
+                "amount": tx.get("amount", 0),
+                "date": tx.get("date", "unknown"),
+                "from": tx.get("from_account", "unknown"),
+                "to": tx.get("to_account", "unknown"),
+            })
+        
+        csv_summary = str(csv_data[:5]) if csv_data else "No CSV data"
+        notes_text = "\n".join(notes[:3]) if notes else "No notes"
+        
+        prompt = f"""You are a data quality expert analyzing financial data for inconsistencies and discrepancies.
+
+Transaction Data (sample):
+{str(tx_summary[:10])}
+
+CSV Data (sample):
+{csv_summary}
+
+Client Notes:
+{notes_text}
+
+Analyze this data for inconsistencies such as:
+- Mismatched account information across sources
+- Amount discrepancies
+- Date inconsistencies
+- Missing or conflicting data
+- Logical contradictions
+
+Provide a JSON-formatted list of inconsistencies. Each should have:
+- "type": type of inconsistency
+- "severity": "critical", "high", "medium", or "low"
+- "description": clear description
+- "evidence": object with relevant data points
+
+Format as JSON array. If none found, return [].
+
+Inconsistencies:"""
+
+        try:
+            llm_response = self.llm_service.generate(prompt, max_new_tokens=600, temperature=0.1)
+            
+            import json
+            import re
+            
+            json_match = re.search(r'\[.*\]', llm_response, re.DOTALL)
+            if json_match:
+                inconsistencies_data = json.loads(json_match.group())
+                inconsistencies = []
+                for inc in inconsistencies_data:
+                    inconsistencies.append({
+                        "type": inc.get("type", "unknown"),
+                        "severity": inc.get("severity", "medium"),
+                        "description": inc.get("description", ""),
+                        "evidence": inc.get("evidence", {}),
+                    })
+                return inconsistencies
+        except Exception as e:
+            logger.warning(f"Failed to parse LLM inconsistency response: {e}")
+        
+        return []
 

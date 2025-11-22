@@ -84,6 +84,7 @@ class BaseAgent(ABC):
         memory: Optional[ConversationBufferMemory] = None,
         max_iterations: int = 10,
         verbose: bool = True,
+        llm_service: Optional[Any] = None,
     ):
         self.agent_id = agent_id
         self.name = name
@@ -92,6 +93,7 @@ class BaseAgent(ABC):
         self.memory = memory or ConversationBufferMemory()
         self.max_iterations = max_iterations
         self.verbose = verbose
+        self.llm_service = llm_service
         
         self.status = AgentStatus.IDLE
         self.current_task_id: Optional[str] = None

@@ -2,7 +2,7 @@
 
 from langchain.tools import BaseTool
 from pydantic import BaseModel, Field
-from typing import Any, Dict
+from typing import Any, Dict, ClassVar
 
 
 class DocumentGeneratorInput(BaseModel):
@@ -14,9 +14,9 @@ class DocumentGeneratorInput(BaseModel):
 class DocumentGeneratorTool(BaseTool):
     """Tool for generating documents."""
 
-    name = "document_generator"
-    description = "Generates formatted documents from structured content"
-    args_schema = DocumentGeneratorInput
+    name: ClassVar[str] = "document_generator"
+    description: ClassVar[str] = "Generates formatted documents from structured content"
+    args_schema: ClassVar[type[BaseModel]] = DocumentGeneratorInput
 
     def _run(self, content: Dict[str, Any], template: str = "default") -> Dict[str, Any]:
         """Generate document."""

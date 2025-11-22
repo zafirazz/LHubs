@@ -163,10 +163,11 @@ class WorkflowEngine:
         result = agent.execute(step_inputs, task_id)
 
         # Store outputs
+        # Always store the entire result under the output key name
+        # This ensures consistent data structure regardless of agent return format
         for output_key in step.get("outputs", []):
-            if output_key in result:
-                self.state["step_outputs"][output_key] = result[output_key]
-                self.state["outputs"][output_key] = result[output_key]
+            self.state["step_outputs"][output_key] = result
+            self.state["outputs"][output_key] = result
 
         # Record execution
         self.execution_history.append({
