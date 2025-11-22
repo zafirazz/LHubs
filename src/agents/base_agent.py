@@ -9,9 +9,20 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 import uuid
 
-from langchain.tools import BaseTool
-from langchain.agents import AgentExecutor
-from langchain.memory import ConversationBufferMemory
+try:
+    from langchain_classic.tools import BaseTool
+    from langchain_classic.agents import AgentExecutor
+    from langchain_classic.memory import ConversationBufferMemory
+except ImportError:
+    try:
+        from langchain.tools import BaseTool
+        from langchain.agents import AgentExecutor
+        from langchain.memory import ConversationBufferMemory
+    except ImportError:
+        from langchain_core.tools import BaseTool
+        # Fallback for missing classes
+        AgentExecutor = None
+        ConversationBufferMemory = None
 
 
 class AgentStatus(Enum):
