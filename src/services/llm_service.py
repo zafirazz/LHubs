@@ -1,25 +1,38 @@
 """
-LLM Service - Handles LLM interactions with Hugging Face models.
+LLM Service - Handles LLM interactions with Hugging Face models and GGUF files.
 """
 
 import logging
 from typing import Any, Dict, List, Optional
 import os
-
-from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
-import torch
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+# Try importing transformers (for Hugging Face models)
+try:
+    from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
+    import torch
+    TRANSFORMERS_AVAILABLE = True
+except ImportError:
+    TRANSFORMERS_AVAILABLE = False
+
+# Try importing llama-cpp-python (for GGUF models)
+try:
+    from llama_cpp import Llama
+    LLAMA_CPP_AVAILABLE = True
+except ImportError:
+    LLAMA_CPP_AVAILABLE = False
 
 
 class LLMService:
     """
-    Service for interacting with local Hugging Face LLM models.
+    Service for interacting with local LLM models.
     
     Supports:
-    - ChatGPT OSS 20B from Hugging Face
-    - Other Hugging Face models
-    - Local model loading and inference
+    - GGUF models (via llama-cpp-python)
+    - Hugging Face models (via transformers)
+    - ChatGPT OSS 20B and similar models
     """
 
     def __init__(
@@ -38,20 +51,36 @@ class LLMService:
         self.max_tokens = max_tokens
         self.trust_remote_code = trust_remote_code
 
+        # Detect if model is GGUF format
+        self.is_gguf = self._is_gguf_model()
+        
         self.tokenizer: Optional[Any] = None
         self.model: Optional[Any] = None
         self.pipeline: Optional[Any] = None
+        self.llama_model: Optional[Any] = None
         self._initialized = False
+
+    def _is_gguf_model(self) -> bool:
+        """Check if the model path points to a GGUF file."""
+        if not self.model_path:
+            return False
+        model_path_obj = Path(self.model_path)
+        if model_path_obj.exists() and model_path_obj.suffix.lower() == ".gguf":
+            return True
+        # Also check if it's a string ending in .gguf
+        if isinstance(self.model_path, str) and self.model_path.lower().endswith(".gguf"):
+            return True
+        return False
 
     def _determine_device(self, device: str) -> str:
         """Determine the device to use."""
         if device == "auto":
-            if torch.cuda.is_available():
-                return "cuda"
-            elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-                return "mps"  # Apple Silicon
-            else:
-                return "cpu"
+            if TRANSFORMERS_AVAILABLE:
+                if torch.cuda.is_available():
+                    return "cuda"
+                elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+                    return "mps"  # Apple Silicon
+            return "cpu"
         return device
 
     def initialize(self) -> None:
@@ -59,35 +88,57 @@ class LLMService:
         if self._initialized:
             return
 
-        logger.info(f"Loading model: {self.model_name} on device: {self.device}")
+        logger.info(f"Loading model: {self.model_path} (GGUF: {self.is_gguf}) on device: {self.device}")
 
         try:
-            # Load tokenizer
-            self.tokenizer = AutoTokenizer.from_pretrained(
-                self.model_path,
-                trust_remote_code=self.trust_remote_code,
-            )
+            if self.is_gguf:
+                # Load GGUF model using llama-cpp-python
+                if not LLAMA_CPP_AVAILABLE:
+                    raise ImportError("llama-cpp-python is required for GGUF models. Install it with: pip install llama-cpp-python")
+                
+                if not Path(self.model_path).exists():
+                    raise FileNotFoundError(f"GGUF model file not found: {self.model_path}")
+                
+                logger.info(f"Loading GGUF model from: {self.model_path}")
+                self.llama_model = Llama(
+                    model_path=self.model_path,
+                    n_ctx=self.max_tokens,  # Context window
+                    n_threads=None,  # Auto-detect CPU threads
+                    verbose=False,
+                )
+                self._initialized = True
+                logger.info("GGUF model loaded successfully")
+            else:
+                # Load Hugging Face model
+                if not TRANSFORMERS_AVAILABLE:
+                    raise ImportError("transformers is required for Hugging Face models. Install it with: pip install transformers torch")
+                
+                # Load tokenizer
+                self.tokenizer = AutoTokenizer.from_pretrained(
+                    self.model_path,
+                    trust_remote_code=self.trust_remote_code,
+                )
 
-            # Load model
-            self.model = AutoModelForCausalLM.from_pretrained(
-                self.model_path,
-                trust_remote_code=self.trust_remote_code,
-                torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
-                device_map=self.device if self.device != "cpu" else None,
-                low_cpu_mem_usage=True,
-            )
+                # Load model
+                self.model = AutoModelForCausalLM.from_pretrained(
+                    self.model_path,
+                    trust_remote_code=self.trust_remote_code,
+                    torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
+                    device_map=self.device if self.device != "cpu" else None,
+                    low_cpu_mem_usage=True,
+                )
 
-            # Create pipeline for text generation
-            self.pipeline = pipeline(
-                "text-generation",
-                model=self.model,
-                tokenizer=self.tokenizer,
-                device=0 if self.device == "cuda" else -1,
-                torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
-            )
+                # Create pipeline for text generation
+                self.pipeline = pipeline(
+                    "text-generation",
+                    model=self.model,
+                    tokenizer=self.tokenizer,
+                    device=0 if self.device == "cuda" else -1,
+                    torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
+                )
 
-            self._initialized = True
-            logger.info("Model loaded successfully")
+                self._initialized = True
+                logger.info("Hugging Face model loaded successfully")
 
         except Exception as e:
             logger.error(f"Error loading model: {e}")
@@ -119,26 +170,37 @@ class LLMService:
         temperature = temperature or self.temperature
 
         try:
-            # Format prompt for chat models
-            if self.tokenizer and hasattr(self.tokenizer, "apply_chat_template"):
-                messages = [{"role": "user", "content": prompt}]
-                formatted_prompt = self.tokenizer.apply_chat_template(
-                    messages, tokenize=False, add_generation_prompt=True
+            if self.is_gguf and self.llama_model:
+                # Generate using GGUF model
+                response = self.llama_model(
+                    prompt,
+                    max_tokens=max_new_tokens,
+                    temperature=temperature,
+                    stop=stop_sequences if stop_sequences else [],
                 )
+                generated_text = response["choices"][0]["text"]
             else:
-                formatted_prompt = prompt
+                # Generate using Hugging Face model
+                # Format prompt for chat models
+                if self.tokenizer and hasattr(self.tokenizer, "apply_chat_template"):
+                    messages = [{"role": "user", "content": prompt}]
+                    formatted_prompt = self.tokenizer.apply_chat_template(
+                        messages, tokenize=False, add_generation_prompt=True
+                    )
+                else:
+                    formatted_prompt = prompt
 
-            # Generate
-            outputs = self.pipeline(
-                formatted_prompt,
-                max_new_tokens=max_new_tokens,
-                temperature=temperature,
-                do_sample=temperature > 0,
-                return_full_text=False,
-                pad_token_id=self.tokenizer.eos_token_id if self.tokenizer else None,
-            )
+                # Generate
+                outputs = self.pipeline(
+                    formatted_prompt,
+                    max_new_tokens=max_new_tokens,
+                    temperature=temperature,
+                    do_sample=temperature > 0,
+                    return_full_text=False,
+                    pad_token_id=self.tokenizer.eos_token_id if self.tokenizer else None,
+                )
 
-            generated_text = outputs[0]["generated_text"]
+                generated_text = outputs[0]["generated_text"]
 
             # Apply stop sequences if provided
             if stop_sequences:

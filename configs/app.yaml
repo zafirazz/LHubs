@@ -48,22 +48,22 @@ vector_db:
   persist_directory: "./data/vector_db"
   collection_name: "aml_embeddings"
 
-# LLM Configuration (Hugging Face Local Model)
+# LLM Configuration (GGUF or Hugging Face Local Model)
 llm:
   provider: "huggingface"  # huggingface, openai, anthropic
-  model_name: "${LLM_MODEL_NAME:Qwen/Qwen2.5-7B-Instruct}"  # ChatGPT OSS 20B or similar
-  model_path: "${LLM_MODEL_PATH:}"  # Local path if model is downloaded
-  device: "${LLM_DEVICE:auto}"  # auto, cpu, cuda
+  model_name: "${LLM_MODEL_NAME:gpt-oss-20b-mxfp4}"  # Model name for reference
+  model_path: "${LLM_MODEL_PATH:/Users/zafiraibraeva/Code/lh2025ubs/gpt-oss-20b-mxfp4.gguf}"  # Path to GGUF model file
+  device: "${LLM_DEVICE:auto}"  # auto, cpu, cuda, mps
   temperature: 0.1
   max_tokens: 4000
-  use_local: true  # Use local Hugging Face model
+  use_local: true  # Use local model
   trust_remote_code: true
   # For OpenAI/Anthropic (if needed)
   api_key: "${LLM_API_KEY:}"
 
 # File Processing
 file_processing:
-  upload_dir: "./data/raw"
+  upload_dir: "${DATA_DIR:/Users/zafiraibraeva/Code/lh2025ubs/wetransfer_data_lauzhack_v3-zip_2025-11-22_1616/data_lauzhack_fixed}"  # Path to data directory
   processed_dir: "./data/processed"
   output_dir: "./data/outputs"
   max_file_size_mb: 100
