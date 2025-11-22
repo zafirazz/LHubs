@@ -2,7 +2,7 @@
 
 from langchain.tools import BaseTool
 from pydantic import BaseModel, Field
-from typing import Any, Dict, List
+from typing import Any, Dict, List, ClassVar
 
 
 class RuleEngineInput(BaseModel):
@@ -14,9 +14,9 @@ class RuleEngineInput(BaseModel):
 class RuleEngineTool(BaseTool):
     """Tool for applying rules."""
 
-    name = "rule_engine"
-    description = "Applies rules to data and evaluates violations"
-    args_schema = RuleEngineInput
+    name: ClassVar[str] = "rule_engine"
+    description: ClassVar[str] = "Applies rules to data and evaluates violations"
+    args_schema: ClassVar[type[BaseModel]] = RuleEngineInput
 
     def _run(self, data: Dict[str, Any], rules: List[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Apply rules."""

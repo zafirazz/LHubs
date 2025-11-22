@@ -3,7 +3,7 @@ Transaction Normalizer Tool - Normalizes transaction data to standard format.
 """
 
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, ClassVar
 
 from langchain.tools import BaseTool
 from pydantic import BaseModel, Field
@@ -20,12 +20,12 @@ class TransactionNormalizerInput(BaseModel):
 class TransactionNormalizerTool(BaseTool):
     """Tool for normalizing transaction data."""
 
-    name = "transaction_normalizer"
-    description = """
+    name: ClassVar[str] = "transaction_normalizer"
+    description: ClassVar[str] = """
     Normalizes transaction data to a standard format.
     Handles various transaction data formats and maps them to a common schema.
     """
-    args_schema = TransactionNormalizerInput
+    args_schema: ClassVar[type[BaseModel]] = TransactionNormalizerInput
 
     def _run(self, transactions: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Normalize transactions."""

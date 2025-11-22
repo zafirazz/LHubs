@@ -25,7 +25,7 @@ class RiskAssessmentAgent(BaseAgent):
     - Regulatory rules
     """
 
-    def __init__(self, agent_id: str = "risk_assessment", **kwargs):
+    def __init__(self, agent_id: str = "risk_assessment", llm_service=None, **kwargs):
         tools = [
             RiskScorerTool(),
             PatternMatcherTool(),
@@ -36,6 +36,7 @@ class RiskAssessmentAgent(BaseAgent):
             name="Risk Assessment Agent",
             description="Calculates comprehensive risk scores for AML casefiles",
             tools=tools,
+            llm_service=llm_service,
             **kwargs
         )
 
@@ -87,7 +88,7 @@ class RiskAssessmentAgent(BaseAgent):
             velocity_risk * 0.15
         )
 
-        # Identify risk factors
+        # Identify risk factors (use LLM if available, otherwise use rule-based)
         risk_factors = self._identify_risk_factors(
             transactions, csv_data, transaction_risk, profile_risk, pattern_risk, velocity_risk
         )
@@ -95,7 +96,7 @@ class RiskAssessmentAgent(BaseAgent):
         # Calculate confidence
         confidence_level = self._calculate_confidence(parsed_data, len(transactions))
 
-        # Generate recommendations
+        # Generate recommendations (use LLM if available, otherwise use rule-based)
         recommendations = self._generate_recommendations(risk_score, risk_factors)
 
         return {
@@ -271,6 +272,42 @@ class RiskAssessmentAgent(BaseAgent):
 
     def _generate_recommendations(self, risk_score: float, risk_factors: List[Dict]) -> List[str]:
         """Generate recommendations based on risk assessment."""
+        # Use LLM if available for intelligent recommendations
+        if self.llm_service:
+            try:
+                # Prepare data summary for LLM
+                risk_summary = f"Risk Score: {risk_score}/100\n"
+                risk_summary += f"Risk Factors: {len(risk_factors)}\n"
+                for factor in risk_factors[:5]:  # Limit to first 5 for context
+                    risk_summary += f"- {factor.get('factor', 'Unknown')}: {factor.get('severity', 'unknown')} severity\n"
+                
+                prompt = f"""You are an AML (Anti-Money Laundering) risk assessment expert. 
+
+Based on the following risk assessment:
+{risk_summary}
+
+Provide 3-5 specific, actionable recommendations for this case. Be concise and professional. Format each recommendation as a single line starting with a dash.
+
+Recommendations:"""
+
+                llm_response = self.llm_service.generate(prompt, max_new_tokens=300, temperature=0.2)
+                
+                # Parse LLM response into list
+                recommendations = []
+                for line in llm_response.split('\n'):
+                    line = line.strip()
+                    if line and (line.startswith('-') or line.startswith('•') or line[0].isdigit()):
+                        # Clean up the line
+                        clean_line = line.lstrip('-•0123456789. ').strip()
+                        if clean_line:
+                            recommendations.append(clean_line)
+                
+                if recommendations:
+                    return recommendations[:5]  # Limit to 5 recommendations
+            except Exception as e:
+                logger.warning(f"LLM recommendation generation failed: {e}. Falling back to rule-based recommendations.")
+        
+        # Fallback to rule-based recommendations
         recommendations = []
 
         if risk_score > 70:

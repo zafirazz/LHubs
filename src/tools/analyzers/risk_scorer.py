@@ -2,7 +2,7 @@
 
 from langchain.tools import BaseTool
 from pydantic import BaseModel, Field
-from typing import Any, Dict
+from typing import Any, Dict, ClassVar
 
 
 class RiskScorerInput(BaseModel):
@@ -13,9 +13,9 @@ class RiskScorerInput(BaseModel):
 class RiskScorerTool(BaseTool):
     """Tool for scoring risk."""
 
-    name = "risk_scorer"
-    description = "Calculates risk scores based on data analysis"
-    args_schema = RiskScorerInput
+    name: ClassVar[str] = "risk_scorer"
+    description: ClassVar[str] = "Calculates risk scores based on data analysis"
+    args_schema: ClassVar[type[BaseModel]] = RiskScorerInput
 
     def _run(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Score risk."""

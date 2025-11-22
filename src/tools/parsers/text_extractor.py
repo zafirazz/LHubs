@@ -4,7 +4,7 @@ Text Extractor Tool - Extracts text from various file formats.
 
 import logging
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, ClassVar
 
 from langchain.tools import BaseTool
 from pydantic import BaseModel, Field
@@ -22,12 +22,12 @@ class TextExtractorInput(BaseModel):
 class TextExtractorTool(BaseTool):
     """Tool for extracting text from files."""
 
-    name = "text_extractor"
-    description = """
+    name: ClassVar[str] = "text_extractor"
+    description: ClassVar[str] = """
     Extracts text content from text files (.txt, .md, etc.).
     Returns the text content as a string.
     """
-    args_schema = TextExtractorInput
+    args_schema: ClassVar[type[BaseModel]] = TextExtractorInput
 
     def _run(self, file_path: str, encoding: str = "utf-8") -> Dict[str, Any]:
         """Extract text from file."""

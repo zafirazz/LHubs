@@ -2,7 +2,9 @@
 Red Flag Detection Agent - Identifies suspicious patterns and AML red flags.
 """
 
+import json
 import logging
+import re
 from typing import Any, Dict, List
 
 from ..base_agent import BaseAgent
@@ -24,7 +26,7 @@ class RedFlagDetectionAgent(BaseAgent):
     - Evidence linking
     """
 
-    def __init__(self, agent_id: str = "redflag_detection", **kwargs):
+    def __init__(self, agent_id: str = "redflag_detection", llm_service=None, **kwargs):
         tools = [
             PatternMatcherTool(),
             RuleEngineTool(),
@@ -35,6 +37,7 @@ class RedFlagDetectionAgent(BaseAgent):
             name="Red Flag Detection Agent",
             description="Identifies AML red flags and suspicious patterns",
             tools=tools,
+            llm_service=llm_service,
             **kwargs
         )
 
@@ -96,7 +99,15 @@ class RedFlagDetectionAgent(BaseAgent):
         red_flags = []
         evidence_links = []
 
-        # Check each red flag pattern
+        # Use LLM for intelligent pattern detection if available
+        if self.llm_service:
+            try:
+                llm_flags = self._detect_red_flags_with_llm(transactions, csv_data, notes)
+                red_flags.extend(llm_flags)
+            except Exception as e:
+                logger.warning(f"LLM red flag detection failed: {e}. Falling back to rule-based detection.")
+
+        # Check each red flag pattern (rule-based fallback or supplement)
         for pattern in self.red_flag_patterns:
             flags = self._check_pattern(transactions, pattern)
             red_flags.extend(flags)
@@ -290,4 +301,77 @@ class RedFlagDetectionAgent(BaseAgent):
                 })
 
         return flags, evidence
+
+    def _detect_red_flags_with_llm(
+        self, transactions: List[Dict], csv_data: List[Dict], notes: List[str]
+    ) -> List[Dict[str, Any]]:
+        """Use LLM to detect red flags intelligently."""
+        # Prepare transaction summary for LLM
+        tx_summary = []
+        for tx in transactions[:20]:  # Limit to first 20 for context
+            tx_summary.append({
+                "id": tx.get("transaction_id", "unknown"),
+                "amount": tx.get("amount", 0),
+                "date": tx.get("date", "unknown"),
+                "type": tx.get("type", "unknown"),
+                "from": tx.get("from_account", "unknown"),
+                "to": tx.get("to_account", "unknown"),
+            })
+        
+        # Prepare prompt
+        prompt = f"""You are an AML (Anti-Money Laundering) expert analyzing transaction data for suspicious patterns and red flags.
+
+Transaction Data (sample of {len(transactions)} total transactions):
+{str(tx_summary[:10])}
+
+Client Notes:
+{chr(10).join(notes[:3]) if notes else "No notes available"}
+
+Analyze this data for AML red flags such as:
+- Structuring (transactions just under reporting thresholds)
+- Unusual transaction patterns
+- Rapid movement of funds
+- Circular transactions
+- Large cash transactions
+- Suspicious counterparties
+- Geographic red flags
+
+Provide a JSON-formatted list of red flags found. Each red flag should have:
+- "flag_type": type of red flag
+- "severity": "high", "medium", or "low"
+- "description": clear description of the issue
+- "count": number of transactions involved
+- "evidence": list of transaction IDs or indicators
+
+Format your response as a JSON array. If no red flags, return empty array [].
+
+Red Flags:"""
+
+        try:
+            llm_response = self.llm_service.generate(prompt, max_new_tokens=800, temperature=0.1)
+            
+            # Try to extract JSON from response
+            import json
+            import re
+            
+            # Look for JSON array in response
+            json_match = re.search(r'\[.*\]', llm_response, re.DOTALL)
+            if json_match:
+                flags_data = json.loads(json_match.group())
+                # Convert to our format
+                red_flags = []
+                for flag in flags_data:
+                    red_flags.append({
+                        "flag_type": flag.get("flag_type", "Unknown"),
+                        "pattern": "llm_detected",
+                        "severity": flag.get("severity", "medium"),
+                        "description": flag.get("description", ""),
+                        "count": flag.get("count", 0),
+                        "evidence": flag.get("evidence", []),
+                    })
+                return red_flags
+        except Exception as e:
+            logger.warning(f"Failed to parse LLM red flag response: {e}")
+        
+        return []
 

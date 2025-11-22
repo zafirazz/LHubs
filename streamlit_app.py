@@ -64,10 +64,15 @@ uploaded_files = st.file_uploader(
     help="Upload one or more CSV files containing transaction or client data"
 )
 
+# Update session state if files were uploaded
 if uploaded_files:
     st.session_state.uploaded_files = uploaded_files
-    
-    # Display uploaded files
+elif not uploaded_files and st.session_state.uploaded_files:
+    # Keep previous files if no new upload
+    uploaded_files = st.session_state.uploaded_files
+
+# Display uploaded files if any
+if uploaded_files and len(uploaded_files) > 0:
     st.subheader("📁 Uploaded Files")
     file_info = []
     for file in uploaded_files:
@@ -91,7 +96,7 @@ if uploaded_files:
             st.warning(f"Could not preview file: {e}")
 
 # Process files button
-if st.session_state.uploaded_files:
+if uploaded_files and len(uploaded_files) > 0:
     col1, col2 = st.columns([1, 4])
     
     with col1:
@@ -105,7 +110,8 @@ if st.session_state.uploaded_files:
                 st.session_state.temp_dir = temp_dir
                 
                 # Save uploaded files to temp directory
-                for file in st.session_state.uploaded_files:
+                files_to_process = uploaded_files if uploaded_files else st.session_state.uploaded_files
+                for file in files_to_process:
                     file_path = os.path.join(temp_dir, file.name)
                     with open(file_path, "wb") as f:
                         f.write(file.getbuffer())

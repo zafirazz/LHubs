@@ -26,7 +26,7 @@ class CasefileBuilderAgent(BaseAgent):
     - Evidence links
     """
 
-    def __init__(self, agent_id: str = "casefile_builder", **kwargs):
+    def __init__(self, agent_id: str = "casefile_builder", llm_service=None, **kwargs):
         tools = [
             DocumentGeneratorTool(),
             TemplateEngineTool(),
@@ -37,6 +37,7 @@ class CasefileBuilderAgent(BaseAgent):
             name="Casefile Builder Agent",
             description="Aggregates all findings into comprehensive casefile document",
             tools=tools,
+            llm_service=llm_service,
             **kwargs
         )
 
@@ -129,10 +130,48 @@ class CasefileBuilderAgent(BaseAgent):
         self, risk_assessment: Dict, inconsistencies: Dict, red_flags: Dict
     ) -> str:
         """Build executive summary."""
+        # Handle case where inputs might be dicts or other structures
+        if not isinstance(risk_assessment, dict):
+            risk_assessment = {}
+        if not isinstance(inconsistencies, dict):
+            inconsistencies = {}
+        if not isinstance(red_flags, dict):
+            red_flags = {}
+            
         risk_score = risk_assessment.get("risk_score", 0)
         red_flag_count = red_flags.get("total_count", 0)
         inconsistency_count = inconsistencies.get("total_count", 0)
 
+        # Use LLM for intelligent summary if available
+        if self.llm_service:
+            try:
+                prompt = f"""You are an AML casefile expert. Create a professional executive summary for an AML casefile.
+
+Risk Score: {risk_score}/100
+Red Flags Detected: {red_flag_count}
+Data Inconsistencies: {inconsistency_count}
+
+Key Risk Factors:
+{str(risk_assessment.get('risk_factors', [])[:3])}
+
+High Severity Red Flags: {red_flags.get('high_severity_count', 0)}
+Critical Inconsistencies: {inconsistencies.get('severity_breakdown', {}).get('critical', 0)}
+
+Create a concise, professional executive summary (3-4 paragraphs) that:
+1. Summarizes the case risk level
+2. Highlights key findings
+3. Provides actionable insights
+4. Uses professional AML terminology
+
+Executive Summary:"""
+
+                llm_summary = self.llm_service.generate(prompt, max_new_tokens=400, temperature=0.2)
+                if llm_summary and len(llm_summary.strip()) > 50:
+                    return llm_summary.strip()
+            except Exception as e:
+                logger.warning(f"LLM executive summary generation failed: {e}. Falling back to template.")
+
+        # Fallback to template-based summary
         summary = f"""
 EXECUTIVE SUMMARY
 
@@ -164,6 +203,16 @@ Data Inconsistencies: {inconsistency_count}
         self, parsed_data: Dict, risk_assessment: Dict, inconsistencies: Dict, red_flags: Dict
     ) -> Dict[str, Any]:
         """Build detailed findings section."""
+        # Ensure inputs are dictionaries
+        if not isinstance(risk_assessment, dict):
+            risk_assessment = {}
+        if not isinstance(inconsistencies, dict):
+            inconsistencies = {}
+        if not isinstance(red_flags, dict):
+            red_flags = {}
+        if not isinstance(parsed_data, dict):
+            parsed_data = {}
+            
         return {
             "risk_assessment": {
                 "overall_score": risk_assessment.get("risk_score", 0),
@@ -193,6 +242,14 @@ Data Inconsistencies: {inconsistency_count}
         self, parsed_data: Dict, risk_assessment: Dict, inconsistencies: Dict, red_flags: Dict
     ) -> List[Dict[str, Any]]:
         """Compile all evidence with links."""
+        # Ensure inputs are dictionaries
+        if not isinstance(risk_assessment, dict):
+            risk_assessment = {}
+        if not isinstance(inconsistencies, dict):
+            inconsistencies = {}
+        if not isinstance(red_flags, dict):
+            red_flags = {}
+            
         evidence = []
 
         # Evidence from red flags

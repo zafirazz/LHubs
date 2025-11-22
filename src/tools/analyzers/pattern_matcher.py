@@ -2,7 +2,7 @@
 
 from langchain.tools import BaseTool
 from pydantic import BaseModel, Field
-from typing import Any, Dict, List
+from typing import Any, Dict, List, ClassVar
 
 
 class PatternMatcherInput(BaseModel):
@@ -14,9 +14,9 @@ class PatternMatcherInput(BaseModel):
 class PatternMatcherTool(BaseTool):
     """Tool for matching patterns."""
 
-    name = "pattern_matcher"
-    description = "Matches data against known patterns"
-    args_schema = PatternMatcherInput
+    name: ClassVar[str] = "pattern_matcher"
+    description: ClassVar[str] = "Matches data against known patterns"
+    args_schema: ClassVar[type[BaseModel]] = PatternMatcherInput
 
     def _run(self, data: List[Dict[str, Any]], patterns: List[str] = None) -> Dict[str, Any]:
         """Match patterns."""

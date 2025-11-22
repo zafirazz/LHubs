@@ -2,7 +2,7 @@
 
 from langchain.tools import BaseTool
 from pydantic import BaseModel, Field
-from typing import Any, Dict
+from typing import Any, Dict, ClassVar
 
 
 class DecisionEngineInput(BaseModel):
@@ -14,9 +14,9 @@ class DecisionEngineInput(BaseModel):
 class DecisionEngineTool(BaseTool):
     """Tool for making decisions based on evidence."""
 
-    name = "decision_engine"
-    description = "Makes decisions based on evidence and criteria"
-    args_schema = DecisionEngineInput
+    name: ClassVar[str] = "decision_engine"
+    description: ClassVar[str] = "Makes decisions based on evidence and criteria"
+    args_schema: ClassVar[type[BaseModel]] = DecisionEngineInput
 
     def _run(self, evidence: Dict[str, Any], criteria: Dict[str, Any] = None) -> Dict[str, Any]:
         """Make decision."""
