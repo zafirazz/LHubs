@@ -1,0 +1,126 @@
+# Default Workflow Definition
+# Defines the execution order and dependencies for agents
+
+workflow:
+  name: "default_aml_casefile_workflow"
+  version: "1.0.0"
+  description: "Standard workflow for AML casefile generation from client data"
+
+# Workflow steps
+steps:
+  - id: "data_parser"
+    agent: "data_parser"
+    name: "Parse Client Data"
+    description: "Parse CSV files, notes, and transactions from uploaded folder"
+    inputs:
+      - "client_folder_path"
+    outputs:
+      - "parsed_data"
+    timeout: 300
+    retries: 2
+
+  - id: "data_validator"
+    agent: "data_validator"
+    name: "Validate Data"
+    description: "Validate data completeness and quality"
+    depends_on:
+      - "data_parser"
+    inputs:
+      - "parsed_data"
+    outputs:
+      - "validation_report"
+    timeout: 120
+    retries: 2
+
+  - id: "risk_assessment"
+    agent: "risk_assessment"
+    name: "Assess Risk"
+    description: "Calculate comprehensive risk score"
+    depends_on:
+      - "data_validator"
+    inputs:
+      - "parsed_data"
+    outputs:
+      - "risk_assessment"
+    timeout: 180
+    retries: 2
+    parallel: true
+
+  - id: "inconsistency_detection"
+    agent: "inconsistency_detection"
+    name: "Detect Inconsistencies"
+    description: "Identify data discrepancies and contradictions"
+    depends_on:
+      - "data_validator"
+    inputs:
+      - "parsed_data"
+    outputs:
+      - "inconsistencies"
+    timeout: 180
+    retries: 2
+    parallel: true
+
+  - id: "redflag_detection"
+    agent: "redflag_detection"
+    name: "Detect Red Flags"
+    description: "Identify AML red flags and suspicious patterns"
+    depends_on:
+      - "data_validator"
+    inputs:
+      - "parsed_data"
+    outputs:
+      - "red_flags"
+    timeout: 180
+    retries: 2
+    parallel: true
+
+  - id: "casefile_builder"
+    agent: "casefile_builder"
+    name: "Build Casefile"
+    description: "Aggregate all findings into comprehensive casefile"
+    depends_on:
+      - "risk_assessment"
+      - "inconsistency_detection"
+      - "redflag_detection"
+    inputs:
+      - "parsed_data"
+      - "risk_assessment"
+      - "inconsistencies"
+      - "red_flags"
+    outputs:
+      - "casefile"
+    timeout: 240
+    retries: 2
+
+  - id: "sar_recommendation"
+    agent: "sar_recommendation"
+    name: "Generate SAR Recommendation"
+    description: "Generate final SAR filing recommendation"
+    depends_on:
+      - "casefile_builder"
+    inputs:
+      - "casefile"
+    outputs:
+      - "sar_recommendation"
+    timeout: 120
+    retries: 2
+
+# Error handling
+error_handling:
+  on_failure: "stop"  # stop, continue, retry
+  max_retries: 3
+  retry_delay: 5
+  dead_letter_queue: true
+
+# Checkpointing
+checkpointing:
+  enabled: true
+  interval: 30  # seconds
+  save_state: true
+
+# Notifications
+notifications:
+  on_completion: true
+  on_failure: true
+  on_checkpoint: false
+
