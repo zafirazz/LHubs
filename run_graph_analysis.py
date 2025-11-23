@@ -50,3 +50,4 @@ if __name__ == "__main__":
             print(f"  {i}. {pattern.get('pattern_type')} - {pattern.get('severity')} severity")
             print(f"     {pattern.get('description')[:80]}...")
 
+

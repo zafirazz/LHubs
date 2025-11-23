@@ -201,17 +201,34 @@ class AMLContextRulesEngine:
         """Get AML context rule for a pattern type."""
         return self.rules.get(pattern_type)
     
-    def explain_pattern(self, pattern: Dict[str, Any]) -> Dict[str, Any]:
+    def explain_pattern(self, pattern) -> Dict[str, Any]:
         """
         Explain a detected pattern using AML context rules.
         
         Args:
-            pattern: Detected pattern dictionary
+            pattern: Detected pattern (PatternMatch object or dictionary)
             
         Returns:
             Explanation with regulatory context
         """
-        pattern_type = pattern.get("pattern_type", "unknown")
+        # Handle both PatternMatch objects and dictionaries
+        if hasattr(pattern, 'pattern_type'):
+            # PatternMatch object
+            pattern_type = pattern.pattern_type
+            accounts_involved = pattern.accounts_involved if hasattr(pattern, 'accounts_involved') else []
+            transactions_involved = pattern.transactions_involved if hasattr(pattern, 'transactions_involved') else []
+            total_amount = pattern.total_amount if hasattr(pattern, 'total_amount') else 0
+            confidence = pattern.confidence if hasattr(pattern, 'confidence') else 0
+            severity = pattern.severity if hasattr(pattern, 'severity') else "low"
+        else:
+            # Dictionary
+            pattern_type = pattern.get("pattern_type", "unknown")
+            accounts_involved = pattern.get("accounts_involved", [])
+            transactions_involved = pattern.get("transactions_involved", [])
+            total_amount = pattern.get("total_amount", 0)
+            confidence = pattern.get("confidence", 0)
+            severity = pattern.get("severity", "low")
+        
         rule = self.get_rule(pattern_type)
         
         if not rule:
@@ -229,14 +246,14 @@ class AMLContextRulesEngine:
             "regulatory_basis": rule.regulatory_basis,
             "explanation": rule.explanation,
             "pattern_details": {
-                "accounts_involved": len(pattern.get("accounts_involved", [])),
-                "transactions_involved": len(pattern.get("transactions_involved", [])),
-                "total_amount": pattern.get("total_amount", 0),
-                "confidence": pattern.get("confidence", 0)
+                "accounts_involved": len(accounts_involved),
+                "transactions_involved": len(transactions_involved),
+                "total_amount": total_amount,
+                "confidence": confidence
             },
             "compliance_implications": rule.compliance_implications,
             "recommended_actions": rule.recommended_actions,
-            "severity": pattern.get("severity", "low")
+            "severity": severity
         }
     
     def assess_risk(self, patterns: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -258,9 +275,13 @@ class AMLContextRulesEngine:
                 "recommendation": "Continue normal monitoring."
             }
         
-        high_risk_count = sum(1 for p in patterns if p.get("severity") == "high")
-        medium_risk_count = sum(1 for p in patterns if p.get("severity") == "medium")
-        low_risk_count = sum(1 for p in patterns if p.get("severity") == "low")
+        # Handle both PatternMatch objects and dicts
+        def get_severity(p):
+            return p.severity if hasattr(p, 'severity') else p.get("severity", "low")
+        
+        high_risk_count = sum(1 for p in patterns if get_severity(p) == "high")
+        medium_risk_count = sum(1 for p in patterns if get_severity(p) == "medium")
+        low_risk_count = sum(1 for p in patterns if get_severity(p) == "low")
         
         # Determine overall risk
         if high_risk_count >= 3:

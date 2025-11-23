@@ -67,6 +67,24 @@ class RedFlagDetectionAgent(BaseAgent):
                 "severity": "medium",
             },
         ]
+        
+        # Suspicious keywords in descriptions (in production, load from database/config)
+        self.suspicious_keywords = {
+            # Money laundering terms
+            "high": ["launder", "laundering", "wash", "washing", "clean money", "dirty money",
+                     "illicit", "illegal", "fraud", "fraudulent", "smuggl", "terrorist", 
+                     "ransom", "bribe", "kickback", "cartel", "mafia", "organized crime",
+                     "drug money", "narcotics", "trafficking", "shell company", "offshore account"],
+            # Medium severity terms
+            "medium": ["untraceable", "anonymous", "under the table", "off the books", 
+                       "cash only", "no questions", "discreet", "confidential payment",
+                       "hide", "conceal", "disguise", "cover up", "fake invoice",
+                       "ghost company", "nominee", "bearer", "straw man"],
+            # Lower severity but still suspicious
+            "low": ["urgent transfer", "immediate payment", "rush transaction", 
+                    "no documentation", "no receipt", "avoid", "evade", "bypass",
+                    "split payment", "multiple transfers", "small amounts"]
+        }
 
     def get_required_inputs(self) -> List[str]:
         return ["parsed_data"]
@@ -118,6 +136,11 @@ class RedFlagDetectionAgent(BaseAgent):
         evidence_links.extend(evidence)
 
         flags, evidence = self._check_anomalous_behavior(transactions)
+        red_flags.extend(flags)
+        evidence_links.extend(evidence)
+        
+        # Check transaction descriptions for suspicious keywords
+        flags, evidence = self._check_suspicious_descriptions(transactions)
         red_flags.extend(flags)
         evidence_links.extend(evidence)
 
@@ -300,6 +323,102 @@ class RedFlagDetectionAgent(BaseAgent):
                     "evidence": [tx.get("transaction_id") for tx in outliers[:5]],
                 })
 
+        return flags, evidence
+    
+    def _check_suspicious_descriptions(self, transactions: List[Dict[str, Any]]) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        """Check transaction descriptions for suspicious keywords and phrases."""
+        flags = []
+        evidence = []
+        
+        suspicious_transactions = []
+        
+        for tx in transactions:
+            description = str(tx.get("description", "")).lower()
+            
+            if not description or description == "none":
+                continue
+            
+            # Check for suspicious keywords by severity
+            matched_keywords = []
+            highest_severity = None
+            
+            for severity in ["high", "medium", "low"]:
+                for keyword in self.suspicious_keywords[severity]:
+                    if keyword.lower() in description:
+                        matched_keywords.append({
+                            "keyword": keyword,
+                            "severity": severity
+                        })
+                        if highest_severity is None:
+                            highest_severity = severity
+                        # If we found a high severity match, no need to check lower severities
+                        if severity == "high":
+                            break
+                if highest_severity == "high":
+                    break
+            
+            if matched_keywords:
+                suspicious_transactions.append({
+                    "transaction": tx,
+                    "keywords": matched_keywords,
+                    "severity": highest_severity
+                })
+        
+        # Create flags for suspicious descriptions
+        if suspicious_transactions:
+            # Group by severity
+            by_severity = {"high": [], "medium": [], "low": []}
+            for item in suspicious_transactions:
+                by_severity[item["severity"]].append(item)
+            
+            for severity, items in by_severity.items():
+                if not items:
+                    continue
+                
+                keywords_found = set()
+                tx_ids = []
+                tx_details = []
+                
+                for item in items:
+                    tx = item["transaction"]
+                    tx_ids.append(tx.get("transaction_id"))
+                    for kw in item["keywords"]:
+                        keywords_found.add(kw["keyword"])
+                    
+                    tx_details.append({
+                        "transaction_id": tx.get("transaction_id"),
+                        "description": tx.get("description"),
+                        "amount": tx.get("amount"),
+                        "keywords_matched": [kw["keyword"] for kw in item["keywords"]]
+                    })
+                
+                severity_desc = {
+                    "high": "CRITICAL - Contains explicit money laundering/fraud terminology",
+                    "medium": "HIGH RISK - Contains suspicious financial terminology",
+                    "low": "MODERATE - Contains potentially suspicious payment patterns"
+                }
+                
+                flags.append({
+                    "flag_type": "Suspicious Transaction Description",
+                    "pattern": "suspicious_description_keywords",
+                    "severity": severity,
+                    "description": f"{severity_desc[severity]}. Found suspicious keywords in {len(items)} transaction(s): {', '.join(list(keywords_found)[:5])}",
+                    "count": len(items),
+                    "evidence": tx_ids[:10],
+                    "details": tx_details[:5],  # Include first 5 for detailed review
+                })
+                
+                for item in items:
+                    tx = item["transaction"]
+                    evidence.append({
+                        "type": "transaction",
+                        "id": tx.get("transaction_id"),
+                        "link": f"transaction_{tx.get('transaction_id')}",
+                        "reason": "suspicious_description",
+                        "severity": severity,
+                        "keywords": [kw["keyword"] for kw in item["keywords"]]
+                    })
+        
         return flags, evidence
 
     def _detect_red_flags_with_llm(

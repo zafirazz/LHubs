@@ -7,10 +7,17 @@ import pandas as pd
 import json
 import tempfile
 import os
+import sys
 from pathlib import Path
 import requests
 import time
 from typing import Dict, Any
+
+# Add src to path
+project_root = Path(__file__).parent
+sys.path.insert(0, str(project_root / "src"))
+
+from utils.auth import Authenticator
 
 # Page configuration
 st.set_page_config(
@@ -20,31 +27,128 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Title
-st.title("🔍 AML Casefile Generation System")
-st.markdown("Upload client data files to generate automated AML casefiles with risk assessment and SAR recommendations.")
+# Initialize authenticator
+if 'authenticator' not in st.session_state:
+    st.session_state.authenticator = Authenticator(users_file=str(project_root / "users.json"))
+
+# Initialize authentication state
+if 'authenticated' not in st.session_state:
+    st.session_state.authenticated = False
+if 'username' not in st.session_state:
+    st.session_state.username = None
+
+# Login page
+if not st.session_state.authenticated:
+    st.title("🔐 AML Casefile Generator - Login")
+    st.markdown("---")
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    
+    with col2:
+        st.markdown("### Please login to continue")
+        
+        with st.form("login_form"):
+            username = st.text_input("Username", placeholder="Enter your username")
+            password = st.text_input("Password", type="password", placeholder="Enter your password")
+            submit = st.form_submit_button("Login", use_container_width=True, type="primary")
+            
+            if submit:
+                if st.session_state.authenticator.authenticate(username, password):
+                    st.session_state.authenticated = True
+                    st.session_state.username = username
+                    st.success(f"Welcome, {username}!")
+                    st.rerun()
+                else:
+                    st.error("❌ Invalid username or password")
+        
+        st.markdown("---")
+        st.info("""
+        **Default Credentials:**
+        - Username: `demo` / Password: `demo`
+        - Username: `analyst` / Password: `analyst123`
+        - Username: `admin` / Password: `admin123`
+        """)
+    
+    st.stop()  # Stop execution if not authenticated
+
+# Header with user info and logout
+col1, col2 = st.columns([4, 1])
+with col1:
+    st.title("🔍 AML Casefile Generation System")
+    st.markdown("Upload client data files to generate automated AML casefiles with risk assessment and SAR recommendations.")
+with col2:
+    st.markdown(f"**User:** {st.session_state.username}")
+    if st.button("🚪 Logout", use_container_width=True):
+        st.session_state.authenticated = False
+        st.session_state.username = None
+        st.rerun()
 
 # Sidebar
 with st.sidebar:
     st.header("⚙️ Configuration")
     
     # API endpoint configuration
-    api_host = st.text_input("API Host", value="http://localhost:8000")
+    api_host = st.text_input("API Host", value="http://localhost:8001")
     
     st.markdown("---")
     st.markdown("### 📋 Instructions")
     st.markdown("""
-    1. Upload CSV files containing transaction data
-    2. Files should include columns like:
-       - Transaction ID
-       - Date
-       - Amount
-       - Currency
-       - Account IDs
-       - Transfer Type
+    1. Upload CSV/Excel files with accounts + transactions
+    2. Required columns:
+       - **Accounts**: account_id, account_iban
+       - **Transactions**: transaction_id, from_account, to_account, amount
     3. Click 'Process Files' to generate casefile
     4. Review results and download report
     """)
+    
+    st.markdown("### 📥 Templates")
+    # Safe template
+    try:
+        safe_template_path = Path("/workspace/aml_template_safe_only.xlsx")
+        if safe_template_path.exists():
+            with open(safe_template_path, "rb") as file:
+                safe_bytes = file.read()
+            st.download_button(
+                label="✅ Safe (No Risk)",
+                data=safe_bytes,
+                file_name="aml_template_safe.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+    except:
+        pass
+    
+    # Mixed template
+    try:
+        mixed_template_path = Path("/workspace/aml_template_mixed_normal_and_risky.xlsx")
+        if mixed_template_path.exists():
+            with open(mixed_template_path, "rb") as file:
+                mixed_bytes = file.read()
+            st.download_button(
+                label="📊 Mixed Template",
+                data=mixed_bytes,
+                file_name="aml_template_mixed.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+    except:
+        pass
+    
+    # Example template
+    try:
+        example_template_path = Path("/workspace/aml_template_with_red_flags.xlsx")
+        if example_template_path.exists():
+            with open(example_template_path, "rb") as file:
+                example_bytes = file.read()
+            st.download_button(
+                label="🚨 Red Flags Only",
+                data=example_bytes,
+                file_name="aml_template_with_red_flags.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+    except:
+        pass
 
 # Initialize session state
 if "uploaded_files" not in st.session_state:

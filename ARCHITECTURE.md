@@ -1,411 +1,275 @@
-# AML Casefile Generation System - Architecture Overview
+# AML Agent Architecture - Simple Context-Based Design
 
-## 1. High-Level System Overview
+## Overview
+
+**Simple, Clean Architecture:**
+1. 🎓 **Training Phase**: Agent learns from `/workspace/data/` (one-time context loading)
+2. 📤 **Runtime Phase**: Upload complete CSV/Excel → Analyze → Generate report
+3. ❌ **No complex database lookups during runtime**
+
+---
+
+## Phase 1: Context/Training Layer
 
 ### Purpose
-The system automatically generates comprehensive AML (Anti-Money Laundering) casefiles from uploaded client data. It processes CSV files, notes, and transaction records through a multi-agent pipeline to produce:
-- Full case summary
-- Risk score calculation
-- Detected inconsistencies
-- Red flags with evidence links
-- Final SAR (Suspicious Activity Report) recommendation
+Give the agent **background knowledge** about:
+- Normal transaction patterns
+- FINMA regulations
+- Reporting thresholds (e.g., 10,000 CHF)
+- Known AML typologies
+- Baseline statistical patterns
 
-### System Architecture Principles
-- **Event-Driven**: Agents communicate via message queues and events
-- **Modular**: Each agent is independently deployable and testable
-- **Observable**: Comprehensive logging and monitoring at every stage
-- **Resilient**: Error handling, retries, and dead-letter queues
-- **Scalable**: Horizontal scaling through stateless agent design
-
-### Data Flow
-
+### Data Sources (`/workspace/data/`)
 ```
-Upload → Parser Agent → Data Validation → Multi-Agent Processing → Aggregation → Casefile Generation
+/workspace/data/
+├── transactions.csv       # Historical transaction data
+├── accounts.csv           # Account information
+├── br_to_account.csv      # Account relationships
+└── ...                    # Other regulatory/context files
 ```
 
-1. **Input Stage**: Judge uploads client folder (CSV + notes + transactions)
-2. **Parsing Stage**: Data Parser Agent extracts and normalizes all data
-3. **Validation Stage**: Data Validator Agent checks completeness and quality
-4. **Analysis Stage**: Parallel agent execution:
-   - Risk Assessment Agent
-   - Inconsistency Detection Agent
-   - Red Flag Detection Agent
-5. **Synthesis Stage**: Casefile Builder Agent aggregates all findings
-6. **Output Stage**: SAR Recommendation Agent produces final report
+### Components
 
-### Key Components
+#### 1. **ContextService** (`src/services/context_service.py`)
+- Loads data from `/workspace/data/`
+- Creates embeddings using `sentence-transformers/all-MiniLM-L6-v2`
+- Stores in vector database (ChromaDB)
+- Provides semantic search for compliance queries
 
-#### Orchestration Layer
-- **Workflow Engine**: Manages agent execution order and dependencies
-- **Message Broker**: Handles inter-agent communication (Redis/RabbitMQ)
-- **Task Queue**: Manages long-running tasks and retries
-- **State Manager**: Tracks workflow state and agent outputs
+**Purpose:** Answer questions like "What are normal transaction patterns for Swiss accounts?"
 
-#### Agent Layer
-- Specialized agents with specific capabilities
-- Each agent has isolated execution environment
-- Agents communicate via structured messages
+#### 2. **AMLContextRulesEngine** (`src/services/aml_context_rules.py`)
+- Hardcoded FINMA regulations
+- Pattern definitions (fan-out, fan-in, circular flow, etc.)
+- Risk level mappings
+- Compliance implications
+- Recommended actions
 
-#### Tool Layer
-- File system operations
-- Database access
-- External API integrations
-- Vector search capabilities
+**Purpose:** Explain detected patterns with regulatory context
 
-#### Service Layer
-- Data persistence
-- Caching
-- Authentication/Authorization
-- API endpoints
+#### 3. **GraphAnalysisService** (`src/services/graph_analysis_service.py`)
+- Pre-computes patterns from training data
+- Builds baseline understanding of transaction graphs
+- Fan threshold: 3 transactions
+- Amount threshold: 10,000 CHF
 
-## 2. Agent Architecture
-
-### Agent Communication Model
-- **Message Passing**: Agents communicate via structured JSON messages
-- **Shared Memory**: Redis for temporary state, PostgreSQL for persistent data
-- **Event Bus**: Pub/Sub for asynchronous notifications
-- **Workflow State**: Centralized state store for coordination
-
-### Agent Definitions
-
-#### 1. Data Parser Agent
-**Role**: Extract and normalize data from various file formats
-
-**Inputs**:
-- Client folder path
-- File metadata (types, sizes)
-
-**Outputs**:
-- Normalized CSV data (structured)
-- Extracted notes (text)
-- Parsed transactions (structured)
-- Data quality metrics
-
-**Tools**:
-- CSV parser
-- PDF/text extractor
-- Transaction normalizer
-- Data validator
-
-**Decision Logic**:
-- Detects file types automatically
-- Chooses appropriate parser
-- Validates schema compliance
-- Reports parsing errors
-
-**Communication**:
-- Publishes: `data.parsed` event
-- Subscribes: `upload.received` event
-- Writes to: Shared data store
+**Purpose:** Understand what normal vs. suspicious graph patterns look like
 
 ---
 
-#### 2. Data Validator Agent
-**Role**: Validate data completeness, consistency, and quality
+## Phase 2: Runtime Analysis (Upload → Analyze → Report)
 
-**Inputs**:
-- Parsed data from Parser Agent
-- Validation rules and schemas
+### User Workflow
+```
+1. User uploads CSV/Excel with:
+   - Accounts (account_id, IBAN)
+   - Transactions (from, to, amount, date, etc.)
 
-**Outputs**:
-- Validation report
-- Data quality score
-- Missing data indicators
-- Schema compliance status
+2. Agent processes:
+   ├── Load data from uploaded file (NOT from database)
+   ├── Build transaction graph
+   ├── Detect patterns (fan-out, fan-in, cycles, etc.)
+   ├── Apply context from training data
+   ├── Assess risk level
+   └── Generate PDF report
 
-**Tools**:
-- Schema validator
-- Data quality scorer
-- Completeness checker
-- Anomaly detector
+3. User downloads PDF with findings
+```
 
-**Decision Logic**:
-- Applies validation rules
-- Calculates quality metrics
-- Flags critical missing data
-- Determines if data is sufficient for analysis
+### Components
 
-**Communication**:
-- Publishes: `validation.complete` event
-- Subscribes: `data.parsed` event
-- Writes to: Validation results store
+#### 1. **ExcelLoader** (`src/services/excel_loader.py`)
+```python
+# BEFORE (Wrong - Complex):
+upload accounts → lookup transactions from database → analyze
 
----
+# AFTER (Correct - Simple):
+upload accounts + transactions → analyze
+```
 
-#### 3. Risk Assessment Agent
-**Role**: Calculate comprehensive risk score based on multiple factors
+**Key Methods:**
+- `load_from_bytes()`: Loads Excel/CSV from Streamlit upload
+- `_normalize_accounts()`: Standardizes account data
+- `_normalize_transactions()`: Standardizes transaction data
 
-**Inputs**:
-- Validated client data
-- Transaction patterns
-- Historical risk models
-- Regulatory rules
+**No database lookups!**
 
-**Outputs**:
-- Overall risk score (0-100)
-- Risk breakdown by category
-- Risk factors identified
-- Confidence level
+#### 2. **AMLAnalysisAgent** (`src/agents/aml_analysis/aml_analysis_agent.py`)
+Main agent that orchestrates analysis:
 
-**Tools**:
-- Risk scoring models
-- Pattern matcher
-- Statistical analyzer
-- Rule engine
+```python
+def process(self, input_data):
+    # 1. Load uploaded data
+    data = self.excel_loader.load_from_bytes(excel_bytes)
+    accounts = data["accounts"]
+    transactions = data["transactions"]
+    
+    # 2. Detect patterns using graph analysis
+    patterns = self.pattern_detector.detect_all_patterns(transactions)
+    
+    # 3. Apply AML context rules (from training)
+    explanations = self.aml_rules.explain_pattern(pattern)
+    
+    # 4. Assess risk
+    risk = self.aml_rules.assess_risk(patterns)
+    
+    # 5. Generate PDF report
+    pdf = self.pdf_generator.generate_report(...)
+    
+    return {
+        "patterns_detected": patterns,
+        "risk_assessment": risk,
+        "pdf_bytes": pdf
+    }
+```
 
-**Decision Logic**:
-- Weights different risk factors
-- Applies ML models if available
-- Considers transaction velocity
-- Factors in client profile
+#### 3. **GraphPatternDetector** (`src/tools/analyzers/graph_pattern_detector.py`)
+Detects AML patterns:
+- **Fan-Out**: One account → many accounts (structuring/smurfing)
+- **Fan-In**: Many accounts → one account (layering)
+- **Gather-Scatter**: Fan-in followed by fan-out (integration)
+- **Simple Cycle**: Circular money flow (obfuscation)
+- **U-Turn**: Money returns to source (wash trading)
 
-**Communication**:
-- Publishes: `risk.assessed` event
-- Subscribes: `validation.complete` event
-- Writes to: Risk assessment store
-
----
-
-#### 4. Inconsistency Detection Agent
-**Role**: Identify discrepancies and contradictions in the data
-
-**Inputs**:
-- All parsed data sources
-- Cross-reference data
-
-**Outputs**:
-- List of inconsistencies
-- Severity levels
-- Evidence links
-- Impact assessment
-
-**Tools**:
-- Cross-reference checker
-- Logic validator
-- Temporal analyzer
-- Pattern matcher
-
-**Decision Logic**:
-- Compares data across sources
-- Checks temporal consistency
-- Validates logical relationships
-- Prioritizes by severity
-
-**Communication**:
-- Publishes: `inconsistencies.detected` event
-- Subscribes: `validation.complete` event
-- Writes to: Inconsistency findings store
-
----
-
-#### 5. Red Flag Detection Agent
-**Role**: Identify suspicious patterns and AML red flags
-
-**Inputs**:
-- Transaction data
-- Client profile
-- Red flag rules database
-- Historical patterns
-
-**Outputs**:
-- Red flags list
-- Evidence links
-- Pattern matches
-- Regulatory rule violations
-
-**Tools**:
-- Pattern matcher
-- Rule engine
-- Anomaly detector
-- Vector similarity search
-
-**Decision Logic**:
-- Matches against known red flag patterns
-- Applies regulatory rules
-- Detects unusual behaviors
-- Links evidence to findings
-
-**Communication**:
-- Publishes: `redflags.detected` event
-- Subscribes: `validation.complete` event
-- Writes to: Red flag findings store
-
----
-
-#### 6. Casefile Builder Agent
-**Role**: Aggregate all findings into comprehensive casefile
-
-**Inputs**:
-- All agent outputs
-- Original data
-- Templates
-
-**Outputs**:
-- Complete casefile document
-- Structured summary
-- Evidence compilation
+#### 4. **PDFReportGenerator** (`src/services/pdf_report_generator.py`)
+Creates comprehensive PDF with:
 - Executive summary
-
-**Tools**:
-- Document generator
-- Template engine
-- Evidence linker
-- Report formatter
-
-**Decision Logic**:
-- Aggregates all findings
-- Prioritizes information
-- Structures narrative
-- Formats for presentation
-
-**Communication**:
-- Publishes: `casefile.built` event
-- Subscribes: `risk.assessed`, `inconsistencies.detected`, `redflags.detected`
-- Writes to: Casefile store
+- Pattern detections with regulatory context
+- 4 visualizations:
+  - Transaction network graph
+  - Pattern-highlighted subgraph
+  - Fund flow diagram
+  - Risk heatmap
 
 ---
 
-#### 7. SAR Recommendation Agent
-**Role**: Generate final SAR filing recommendation
+## Data Flow Diagram
 
-**Inputs**:
-- Complete casefile
-- Regulatory thresholds
-- Filing criteria
-
-**Outputs**:
-- SAR recommendation (Yes/No/Maybe)
-- Confidence level
-- Rationale
-- Filing priority
-
-**Tools**:
-- Decision engine
-- Regulatory rule checker
-- Confidence calculator
-- Recommendation formatter
-
-**Decision Logic**:
-- Evaluates all evidence
-- Applies regulatory criteria
-- Calculates recommendation confidence
-- Provides clear rationale
-
-**Communication**:
-- Publishes: `sar.recommendation.ready` event
-- Subscribes: `casefile.built` event
-- Writes to: Final recommendation store
+```
+┌─────────────────────────────────────────┐
+│       TRAINING PHASE (One-Time)         │
+├─────────────────────────────────────────┤
+│                                         │
+│  /workspace/data/                       │
+│  ├── transactions.csv                   │
+│  ├── accounts.csv                       │
+│  └── ...                                │
+│           ↓                             │
+│  ContextService (Vector DB)             │
+│  AMLContextRulesEngine (FINMA Rules)    │
+│  GraphAnalysisService (Baselines)       │
+│                                         │
+│  Result: Agent has "knowledge"          │
+└─────────────────────────────────────────┘
+                    ↓
+┌─────────────────────────────────────────┐
+│         RUNTIME PHASE (Per Upload)      │
+├─────────────────────────────────────────┤
+│                                         │
+│  User Uploads: accounts_and_txns.csv    │
+│           ↓                             │
+│  ExcelLoader.load_from_bytes()          │
+│           ↓                             │
+│  GraphPatternDetector                   │
+│    - Build graph from uploaded data     │
+│    - Detect patterns                    │
+│           ↓                             │
+│  AMLContextRulesEngine                  │
+│    - Apply regulatory context           │
+│    - Explain patterns                   │
+│           ↓                             │
+│  PDFReportGenerator                     │
+│    - Create visualizations              │
+│    - Generate PDF                       │
+│           ↓                             │
+│  User Downloads: aml_report.pdf         │
+│                                         │
+└─────────────────────────────────────────┘
+```
 
 ---
 
-#### 8. Orchestrator Agent
-**Role**: Coordinate workflow execution and manage agent lifecycle
+## Key Design Principles
 
-**Inputs**:
-- Workflow definitions
-- System state
-- Agent health status
+### ✅ DO
+1. **Simple data flow**: Upload complete file → analyze → report
+2. **Context from training data**: Use `/workspace/data/` for background knowledge
+3. **Graph-based detection**: Real algorithms, not just LLM guessing
+4. **Regulatory grounding**: Every pattern explained with FINMA context
+5. **Guardrails**: No invented rules, no false accusations
 
-**Outputs**:
-- Workflow execution plan
-- Agent assignments
-- Error recovery actions
+### ❌ DON'T
+1. **No runtime database lookups**: Everything in uploaded file
+2. **No complex joins**: Keep it simple
+3. **No policy hallucination**: Only use established rules
+4. **No criminal accusations**: Patterns ≠ proof of crime
 
-**Tools**:
-- Workflow engine
-- Agent manager
-- State tracker
-- Error handler
+---
 
-**Decision Logic**:
-- Determines execution order
-- Manages parallel execution
-- Handles failures and retries
-- Monitors agent health
+## File Format Requirements
 
-**Communication**:
-- Publishes: Workflow events
-- Subscribes: All agent events
-- Manages: Agent lifecycle
+### Option 1: Excel with Two Sheets
+```
+Sheet 1: Accounts
+- account_id (required)
+- account_iban (optional)
+- account_holder (optional)
 
-## 3. Technology Stack Recommendations
+Sheet 2: Transactions
+- transaction_id (required)
+- from_account (required)
+- to_account (required)
+- amount (required)
+- currency (optional, default: CHF)
+- date (optional)
+- type (optional)
+```
 
-### Core Framework
-- **Python 3.11+**: Primary language
-- **FastAPI**: REST API and async support
-- **LangGraph**: Agent orchestration and state management
-- **LangChain**: LLM integration and tooling
+### Option 2: Single CSV
+Combine all columns in one CSV file.
 
-### Data & Storage
-- **PostgreSQL**: Primary database for structured data
-- **Redis**: Caching and message broker
-- **Chroma/FAISS**: Vector database for embeddings
-- **SQLite**: Local development database
+### Example Files
+- `/workspace/example_complete_upload.csv` - Sample data with red flags
+- `/workspace/example_excel_format.md` - Format documentation
 
-### Message Queue & Events
-- **Redis Streams**: Lightweight message queue
-- **Celery**: Task queue for long-running operations
-- **WebSockets**: Real-time updates
+---
 
-### AI/ML
-- **Hugging Face Transformers**: Local LLM models (ChatGPT OSS 20B, etc.)
-- **PyTorch**: Deep learning framework
-- **scikit-learn**: Traditional ML models
-- **pandas**: Data manipulation
-- **numpy**: Numerical operations
+## Testing
 
-### Observability
-- **Prometheus**: Metrics collection
-- **Grafana**: Visualization
-- **ELK Stack**: Log aggregation (optional)
-- **Sentry**: Error tracking
+### Quick Test
+```bash
+cd /workspace/LHubs_Zafira
+streamlit run streamlit_aml_app.py
+```
 
-### Development
-- **pytest**: Testing framework
-- **black**: Code formatting
-- **mypy**: Type checking
-- **ruff**: Linting
+Then upload: `/workspace/example_complete_upload.csv`
 
-## 4. Memory Architecture
+### Expected Output
+- ✅ Loads 9 accounts
+- ✅ Loads 13 transactions
+- ✅ Detects multiple patterns (fan-out, fan-in, structuring)
+- ✅ High risk assessment
+- ✅ PDF report with 4 visualizations
 
-### Short-term Memory (Redis)
-- Agent execution state
-- Workflow progress
-- Temporary data caches
-- Message queues
+---
 
-### Long-term Memory (PostgreSQL)
-- Client data
-- Agent outputs
-- Casefiles
-- Audit logs
+## Architecture Benefits
 
-### Vector Memory (Chroma/FAISS)
-- Document embeddings
-- Similarity search
-- Pattern matching
-- Historical case references
+1. **🚀 Fast**: No database queries during analysis
+2. **🎯 Simple**: Easy to understand and debug
+3. **🔒 Secure**: No data persistence, no database
+4. **📊 Transparent**: Clear what data agent sees
+5. **🧪 Testable**: Easy to create test cases
+6. **🎓 Explainable**: Context-based reasoning
 
-## 5. Error Handling & Recovery
+---
 
-### Agent Failures
-- Automatic retry with exponential backoff
-- Dead-letter queue for failed tasks
-- Health checks and auto-restart
-- Circuit breakers for external dependencies
+## Future Enhancements (if needed)
 
-### Workflow Recovery
-- Checkpoint system for workflow state
-- Ability to resume from last checkpoint
-- Manual intervention points
-- Rollback capabilities
+- [ ] Add more AML typologies (trade-based laundering, etc.)
+- [ ] Support more file formats (JSON, Parquet)
+- [ ] Batch processing for multiple files
+- [ ] Real-time streaming analysis
+- [ ] Integration with external AML databases
 
-## 6. Security Considerations
-
-- Input validation and sanitization
-- Secure file handling
-- Encrypted data storage
-- Audit logging
-- Role-based access control
-- API authentication (JWT)
-
+But keep it simple for now! 🎯

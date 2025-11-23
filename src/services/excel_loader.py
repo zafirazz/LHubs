@@ -196,12 +196,12 @@ class ExcelLoader:
                     except:
                         continue
             
-            # Load transactions
+            # Load transactions from Excel file
             if transactions_sheet:
                 df_transactions = pd.read_excel(io.BytesIO(file_bytes), sheet_name=transactions_sheet)
                 logger.info(f"Loading transactions from sheet '{transactions_sheet}'")
                 transactions = self._normalize_transactions(df_transactions)
-                logger.info(f"Loaded {len(transactions)} transactions")
+                logger.info(f"Loaded {len(transactions)} transactions from Excel sheet")
             else:
                 logger.warning("No transactions sheet found - trying all sheets...")
                 # Try all sheets as transactions

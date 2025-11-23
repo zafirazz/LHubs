@@ -152,7 +152,9 @@ class AMLAnalysisAgent(BaseAgent):
                 patterns=patterns_dict,
                 risk_assessment=risk_assessment,
                 pattern_explanations=pattern_explanations,
-                temp_dir=temp_dir
+                temp_dir=temp_dir,
+                generated_by=input_data.get("generated_by", "System"),  # Pass username
+                filename=input_data.get("filename", "upload.xlsx")  # Pass filename
             )
             
             # Read PDF bytes for return

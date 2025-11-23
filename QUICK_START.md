@@ -1,5 +1,18 @@
 # AML Analysis Agent - Quick Start Guide
 
+## 🎯 Simple Architecture
+
+**Training → Upload → Analyze → Report**
+
+1. 🎓 **Context**: Agent trained on `/workspace/data/` (FINMA rules, normal patterns)
+2. 📤 **Upload**: You provide complete CSV/Excel (accounts + transactions)
+3. 🔍 **Analyze**: Graph-based pattern detection
+4. 📄 **Report**: Download PDF with findings
+
+**No database lookups! Everything from uploaded file.**
+
+---
+
 ## What to Run
 
 ### Option 1: Streamlit Web App (Recommended for Demo)
@@ -10,10 +23,15 @@ streamlit run streamlit_aml_app.py
 ```
 
 Then:
-1. Open browser to the URL shown (usually http://localhost:8501)
-2. Upload Excel file with accounts and transactions
-3. Click "Analyze for AML Patterns"
-4. View results and download PDF report
+1. **Login** with credentials: `demo` / `demo` (or `analyst` / `analyst123`)
+2. Open browser to the URL shown (usually http://localhost:8501)
+3. Upload Excel/CSV file with **BOTH accounts AND transactions**
+4. Click "Analyze for AML Patterns"
+5. View results and download PDF report
+
+**Test File:** Use `/workspace/aml_template_with_red_flags.xlsx` for quick testing
+
+**Authentication:** See `AUTHENTICATION_GUIDE.md` for user management
 
 ### Option 2: Command Line Script
 
@@ -58,21 +76,27 @@ Key dependencies:
 - `reportlab` - PDF generation
 - `streamlit` - Web interface
 
-### Excel File Format
+### File Format Requirements
 
-Your Excel file should have two sheets:
+**Option 1: Excel with Two Sheets**
 
-**Sheet 1: Accounts** (name should contain "account")
-- `Account ID` or `IBAN` (required)
-- `Account Holder` or `Name` (optional)
+**Sheet 1: Accounts**
+- `account_id` or `IBAN` (required)
+- `account_holder` or `name` (optional)
 
-**Sheet 2: Transactions** (name should contain "transaction")
-- `From Account` or `Sender` (required)
-- `To Account` or `Receiver` (required)
-- `Amount` (required)
-- `Date` (optional)
-- `Transaction Type` (optional)
-- `Currency` (optional)
+**Sheet 2: Transactions**
+- `transaction_id` (required)
+- `from_account` or `sender` (required)
+- `to_account` or `receiver` (required)
+- `amount` (required)
+- `currency` (optional, default: CHF)
+- `date` (optional)
+- `type` (optional)
+
+**Option 2: Single CSV**
+Combine all columns in one CSV file. See `/workspace/example_complete_upload.csv`
+
+**Important:** Upload must contain BOTH accounts AND transactions. No database lookups!
 
 ## What Gets Generated
 
@@ -134,4 +158,5 @@ PDF Report: /tmp/aml_analysis_report.pdf
 - `src/services/excel_loader.py` - Excel data loader
 - `src/services/aml_context_rules.py` - AML rules engine
 - `src/services/pdf_report_generator.py` - PDF generator
+
 
