@@ -6,12 +6,31 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 import uuid
 
 from langchain.tools import BaseTool
-from langchain.agents import AgentExecutor
-from langchain.memory import ConversationBufferMemory
+
+# Optional imports for type hints (may not be available in all LangChain versions)
+if TYPE_CHECKING:
+    try:
+        from langchain.agents import AgentExecutor
+    except ImportError:
+        AgentExecutor = Any
+    try:
+        from langchain.memory import ConversationBufferMemory
+    except ImportError:
+        ConversationBufferMemory = Any
+else:
+    # Try to import, but don't fail if not available
+    try:
+        from langchain.agents import AgentExecutor
+    except ImportError:
+        AgentExecutor = Any
+    try:
+        from langchain.memory import ConversationBufferMemory
+    except ImportError:
+        ConversationBufferMemory = Any
 
 
 class AgentStatus(Enum):
@@ -90,7 +109,19 @@ class BaseAgent(ABC):
         self.name = name
         self.description = description
         self.tools = tools or []
-        self.memory = memory or ConversationBufferMemory()
+        # Initialize memory (optional, may not be used)
+        if memory is not None:
+            self.memory = memory
+        else:
+            # Try to create ConversationBufferMemory, but don't fail if not available
+            try:
+                # Check if ConversationBufferMemory is actually a class (not Any)
+                if ConversationBufferMemory is not Any and hasattr(ConversationBufferMemory, '__call__'):
+                    self.memory = ConversationBufferMemory()
+                else:
+                    self.memory = None
+            except (ImportError, NameError, TypeError):
+                self.memory = None  # Memory not available
         self.max_iterations = max_iterations
         self.verbose = verbose
         self.llm_service = llm_service

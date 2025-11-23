@@ -1,0 +1,84 @@
+===========================================
+MINIMAL EXCEL FILE FORMAT
+===========================================
+
+YES! The system works with ONLY Account ID and IBAN!
+
+===========================================
+SHEET 1: "Accounts"
+===========================================
+
+Minimum Required Columns:
+- Account ID
+- IBAN
+
+Example:
+--------
+Account ID | IBAN
+-----------|-------------------
+ACC001     | CH1234567890123456789
+ACC002     | CH9876543210987654321
+ACC003     | CH5555555555555555555
+
+That's it! Just these two columns.
+
+===========================================
+SHEET 2: "Transactions"
+===========================================
+
+Minimum Required Columns:
+- From Account
+- To Account
+- Amount
+
+Example:
+--------
+From Account | To Account | Amount
+-------------|------------|--------
+ACC001       | ACC002     | 1000.00
+ACC002       | ACC003     | 2000.00
+ACC003       | ACC001     | 1500.00
+
+===========================================
+COMPLETE MINIMAL EXAMPLE
+===========================================
+
+Accounts Sheet:
+Account ID,IBAN
+ACC001,CH1234567890123456789
+ACC002,CH9876543210987654321
+ACC003,CH5555555555555555555
+
+Transactions Sheet:
+From Account,To Account,Amount
+ACC001,ACC002,1000.00
+ACC001,ACC003,2000.00
+ACC002,ACC003,5000.00
+ACC003,ACC001,1500.00
+
+===========================================
+IMPORTANT NOTES
+===========================================
+
+1. Account IDs in transactions must match Account ID 
+   or IBAN from the accounts sheet
+
+2. You can use EITHER Account ID OR IBAN in transactions:
+   - Use Account ID: "ACC001" → matches Account ID column
+   - Use IBAN: "CH1234567890123456789" → matches IBAN column
+
+3. All other columns (Account Holder, Date, Currency, etc.)
+   are OPTIONAL
+
+4. Sheet names must contain "account" and "transaction"
+   (case-insensitive)
+
+===========================================
+READY TO USE!
+===========================================
+
+Create an Excel file with just these columns and upload it
+via: streamlit run streamlit_aml_app.py
+
+The system will automatically detect and analyze the data!
+
