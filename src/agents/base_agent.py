@@ -9,6 +9,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 import uuid
 
+<<<<<<< HEAD
 from langchain.tools import BaseTool
 
 # Optional imports for type hints (may not be available in all LangChain versions)
@@ -31,6 +32,22 @@ else:
         from langchain.memory import ConversationBufferMemory
     except ImportError:
         ConversationBufferMemory = Any
+=======
+try:
+    from langchain_classic.tools import BaseTool
+    from langchain_classic.agents import AgentExecutor
+    from langchain_classic.memory import ConversationBufferMemory
+except ImportError:
+    try:
+        from langchain.tools import BaseTool
+        from langchain.agents import AgentExecutor
+        from langchain.memory import ConversationBufferMemory
+    except ImportError:
+        from langchain_core.tools import BaseTool
+        # Fallback for missing classes
+        AgentExecutor = None
+        ConversationBufferMemory = None
+>>>>>>> 07bf48b30f120456ee035893aa0196adf83b2d72
 
 
 class AgentStatus(Enum):
